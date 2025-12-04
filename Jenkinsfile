@@ -97,7 +97,7 @@ pipeline {
                     sh """
                         kubectl delete deployment frontend --ignore-not-found
                         kubectl delete deployment backend  --ignore-not-found
-                        kubectl delete deployment database --ignore-not-found
+                        kubectl delete statefulset database --ignore-not-found
                         kubectl delete service frontend --ignore-not-found
                         kubectl delete service backend  --ignore-not-found
                         kubectl delete service database --ignore-not-found
