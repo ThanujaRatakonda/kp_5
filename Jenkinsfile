@@ -111,7 +111,7 @@ pipeline {
                     echo "Scaling database to ${params.DB_REPLICA_COUNT}"
                     sh "kubectl scale deployment frontend --replicas=${params.REPLICA_COUNT}"
                     sh "kubectl scale deployment backend  --replicas=${params.REPLICA_COUNT}"
-                    sh "kubectl scale statefullset database --replicas=${params.DB_REPLICA_COUNT}"
+                    sh "kubectl scale statefulset database --replicas=${params.DB_REPLICA_COUNT}"
                     sh "kubectl get deployments"
                 }
             }
