@@ -1,11 +1,14 @@
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: PersistentVolume
 metadata:
-  name: shared-pvc
+  name: shared-pv
 spec:
-  storageClassName: shared-storage 
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
   accessModes:
-    - ReadWriteMany 
-  resources:
-    requests:
-      storage: 1Gi
+    - ReadWriteMany
+  storageClassName: shared-storage
+  hostPath:
+    path: /data/shared
+    type: DirectoryOrCreate
