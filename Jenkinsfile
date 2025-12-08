@@ -73,7 +73,6 @@ pipeline {
                 sh """
                     sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml
                     kubectl apply -f k8s/frontend-deployment.yaml
-                    kubectl apply -f k8s/frontend-service.yaml
                 """
             }
         }
@@ -127,7 +126,6 @@ pipeline {
                 sh """
                     sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml
                     kubectl apply -f k8s/backend-deployment.yaml
-                    kubectl apply -f k8s/backend-service.yaml
                 """
             }
         }
@@ -148,7 +146,6 @@ pipeline {
                 sh """
                     kubectl apply -f k8s/shared-pvc.yaml
                     kubectl apply -f k8s/database-statefulset.yaml
-                    kubectl apply -f k8s/database-service.yaml
                 """
             }
         }
