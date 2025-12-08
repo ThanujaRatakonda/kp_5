@@ -93,9 +93,6 @@ pipeline {
                 stage('Scale Frontend') {
                     steps { sh "kubectl scale deployment frontend --replicas=${params.FRONTEND_REPLICAS}" }
                 }
-                stage('Autoscale Frontend') {
-                    steps { sh "kubectl autoscale deployment frontend --cpu-percent=50 --min=1 --max=5" }
-                }
             }
         }
 
@@ -142,11 +139,9 @@ pipeline {
                 stage('Scale Backend') {
                     steps { sh "kubectl scale deployment backend --replicas=${params.BACKEND_REPLICAS}" }
                 }
-                stage('Autoscale Backend') {
-                    steps { sh "kubectl autoscale deployment backend --cpu-percent=50 --min=1 --max=5" }
-                }
             }
         }
 
     }
 }
+
