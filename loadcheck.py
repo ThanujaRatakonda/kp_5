@@ -1,35 +1,31 @@
 import requests
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
 
-# URL of the backend service
-URL = "http://10.131.103.92:5000/users"
+URL = "http://10.131.103.92:4000/users"
 
-def fire_and_forget(_):
-    """Simulate 'curl -s > /dev/null'"""
+def hit(_):
     try:
-        requests.get(URL, timeout=10)
+        r = requests.get(URL, timeout=5)
+        return r.headers.get("X-Pod-Name", "unknown")
     except:
-        pass
-
-def check_status_and_pod(_):
-    """Simulate 'curl -o /dev/null -w' and show which pod handled the request"""
-    try:
-        r = requests.get(URL, timeout=10)
-        pod = r.headers.get("X-Pod-Name", "unknown")
-        print(f"status:{r.status_code}, Time:{r.elapsed.total_seconds():.3f}s, Pod:{pod}")
-    except Exception as e:
-        print(f"status:ERR, Time:N/A, Pod:N/A")
+        return "failed"
 
 def main():
     total = int(input("Enter number of requests: "))
 
-    print(f"\nSending {total} fire-and-forget requests...")
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        list(executor.map(fire_and_forget, range(total)))
+    print(f"\nSending {total} concurrent requests to frontend...\n")
 
-    print(f"\nSending {total} requests with status/time and pod info...")
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        list(executor.map(check_status_and_pod, range(total)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=200) as executor:
+        results = list(executor.map(hit, range(total)))
+
+    # Count hits per pod
+    pod_count = {}
+    for pod in results:
+        pod_count[pod] = pod_count.get(pod, 0) + 1
+
+    print("\n--- POD HIT COUNT ---")
+    for pod, count in pod_count.items():
+        print(f"{pod}: {count} requests")
 
 if __name__ == "__main__":
     main()
