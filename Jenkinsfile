@@ -1,118 +1,164 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        HARBOR_URL = "10.131.103.92:8090"
+        HARBOR_PROJECT = "kp_3"
+        TRIVY_OUTPUT_JSON = "trivy-output.json"
+    }
+
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['FULL_PIPELINE', 'FRONTEND_ONLY', 'BACKEND_ONLY', 'DATABASE_ONLY'],
-            description: 'Select what you want to deploy'
+            choices: ['FULL_PIPELINE', 'SCALE_ONLY'],
+            description: 'Choose FULL_PIPELINE or SCALE_ONLY'
         )
-    }
-
-    environment {
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        REGISTRY = "yourregistry/kp3"
+        string(name: 'FRONTEND_REPLICAS', defaultValue: '1')
+        string(name: 'BACKEND_REPLICAS', defaultValue: '1')
+        string(name: 'DB_REPLICAS', defaultValue: '1')
     }
 
     stages {
 
+        /* =======================================
+                  CHECKOUT
+        ======================================= */
         stage('Checkout') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
             steps {
-                checkout scm
+                git 'https://github.com/ThanujaRatakonda/kp_3.git'
             }
         }
 
-        /* ================================
-           FRONTEND BUILD + PUSH
-        ================================= */
-        stage('Build Frontend Image') {
-            when {
-                anyOf {
-                    expression { params.ACTION == 'FULL_PIPELINE' }
-                    expression { params.ACTION == 'FRONTEND_ONLY' }
-                }
-            }
+        /* =======================================
+                  FRONTEND PIPELINE
+        ======================================= */
+        stage('Build Frontend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
             steps {
-                echo "Building Frontend Image"
+                sh "docker build -t frontend:${IMAGE_TAG} ./frontend"
+            }
+        }
+
+        stage('Scan Frontend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
                 sh """
-                    docker build -t ${REGISTRY}-frontend:${IMAGE_TAG} ./frontend
-                    docker push ${REGISTRY}-frontend:${IMAGE_TAG}
+                    trivy image frontend:${IMAGE_TAG} \
+                        --severity CRITICAL,HIGH \
+                        --format json -o ${TRIVY_OUTPUT_JSON}
                 """
+                archiveArtifacts artifacts: "${TRIVY_OUTPUT_JSON}"
             }
         }
 
-        /* =================================
-           BACKEND BUILD + PUSH
-        ================================== */
-        stage('Build Backend Image') {
-            when {
-                anyOf {
-                    expression { params.ACTION == 'FULL_PIPELINE' }
-                    expression { params.ACTION == 'BACKEND_ONLY' }
-                }
-            }
-            steps {
-                echo "Building Backend Image"
-                sh """
-                    docker build -t ${REGISTRY}-backend:${IMAGE_TAG} ./backend
-                    docker push ${REGISTRY}-backend:${IMAGE_TAG}
-                """
-            }
-        }
-
-        /* =================================
-           DATABASE BUILD (Optional)
-        ================================== */
-        stage('Build Database Image') {
-            when {
-                anyOf {
-                    expression { params.ACTION == 'FULL_PIPELINE' }
-                    expression { params.ACTION == 'DATABASE_ONLY' }
-                }
-            }
-            steps {
-                echo "Building Database Image"
-                sh """
-                    docker build -t ${REGISTRY}-database:${IMAGE_TAG} ./database
-                    docker push ${REGISTRY}-database:${IMAGE_TAG}
-                """
-            }
-        }
-
-        /* ====================================
-           APPLY K8s DEPLOYMENT (YOUR STAGE)
-        ===================================== */
-
-        stage('Apply Kubernetes Deployment') {
+        stage('Push Frontend') {
             when { expression { params.ACTION == 'FULL_PIPELINE' } }
             steps {
                 script {
-
-                    // Update image tags in YAML
-                    sh """
-                        sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml
-                        sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml
-                    """
-
-                    // Delete old deployments/services
-                    sh """
-                        kubectl delete deployment frontend --ignore-not-found
-                        kubectl delete deployment backend --ignore-not-found
-                        kubectl delete statefulset database --ignore-not-found
-                        kubectl delete service frontend --ignore-not-found
-                        kubectl delete service backend --ignore-not-found
-                        kubectl delete service database --ignore-not-found
-                    """
-
-                    // Create PVC if not exists
-                    sh """
-                        kubectl get pvc shared-pvc || kubectl apply -f k8s/shared-pvc.yaml
-                    """
-
-                    // Apply all YAMLs
-                    sh "kubectl apply -f k8s/"
+                    def fullImg = "${HARBOR_URL}/${HARBOR_PROJECT}/frontend:${IMAGE_TAG}"
+                    withCredentials([usernamePassword(credentialsId: 'harbor-creds', usernameVariable: 'U', passwordVariable: 'P')]) {
+                        sh "echo \$P | docker login ${HARBOR_URL} -u \$U --password-stdin"
+                        sh "docker tag frontend:${IMAGE_TAG} ${fullImg}"
+                        sh "docker push ${fullImg}"
+                    }
                 }
             }
         }
-    }
+
+        stage('Deploy Frontend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                sh """
+                    sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml
+                    kubectl apply -f k8s/frontend-deployment.yaml
+                    kubectl apply -f k8s/frontend-service.yaml
+                """
+            }
+        }
+
+        stage('Scale Frontend') {
+            steps {
+                sh "kubectl scale deployment frontend --replicas=${params.FRONTEND_REPLICAS}"
+            }
+        }
+
+
+        /* =======================================
+                  BACKEND PIPELINE
+        ======================================= */
+        stage('Build Backend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                sh "docker build -t backend:${IMAGE_TAG} ./backend"
+            }
+        }
+
+        stage('Scan Backend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                sh """
+                    trivy image backend:${IMAGE_TAG} \
+                        --severity CRITICAL,HIGH \
+                        --format json -o ${TRIVY_OUTPUT_JSON}
+                """
+                archiveArtifacts artifacts: "${TRIVY_OUTPUT_JSON}"
+            }
+        }
+
+        stage('Push Backend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                script {
+                    def fullImg = "${HARBOR_URL}/${HARBOR_PROJECT}/backend:${IMAGE_TAG}"
+                    withCredentials([usernamePassword(credentialsId: 'harbor-creds', usernameVariable: 'U', passwordVariable: 'P')]) {
+                        sh "echo \$P | docker login ${HARBOR_URL} -u \$U --password-stdin"
+                        sh "docker tag backend:${IMAGE_TAG} ${fullImg}"
+                        sh "docker push ${fullImg}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Backend') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                sh """
+                    sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml
+                    kubectl apply -f k8s/backend-deployment.yaml
+                    kubectl apply -f k8s/backend-service.yaml
+                """
+            }
+        }
+
+        stage('Scale Backend') {
+            steps {
+                sh "kubectl scale deployment backend --replicas=${params.BACKEND_REPLICAS}"
+            }
+        }
+
+
+        /* =======================================
+                  DATABASE PIPELINE
+        ======================================= */
+        stage('Deploy Database') {
+            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            steps {
+                sh """
+                    kubectl apply -f k8s/shared-pvc.yaml
+                    kubectl apply -f k8s/database-statefulset.yaml
+                    kubectl apply -f k8s/database-service.yaml
+                """
+            }
+        }
+
+        stage('Scale Database') {
+            steps {
+                sh "kubectl scale statefulset database --replicas=${params.DB_REPLICAS}"
+            }
+        }
+
+    } // END STAGES
 }
+
