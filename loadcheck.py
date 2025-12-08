@@ -1,37 +1,36 @@
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
-#  FRONTEND_URL = "http://10.131.103.92:4000"
-BACKEND_URL = "http://10.131.103.92:5000/users"
+# URL of the backend service
+URL = "http://10.131.103.92:5000/users"
 
-def hit_frontend(_):
-    """Fire-and-forget request to frontend (like curl -s > /dev/null)."""
+def fire_and_forget(_):
+    """Simulate 'curl -s > /dev/null'"""
     try:
-        requests.get(FRONTEND_URL, timeout=10)
+        requests.get(URL, timeout=10)
     except:
         pass
 
-def hit_backend(_):
-    """Request backend and print status, time, and pod handling the request."""
+def check_status_and_pod(_):
+    """Simulate 'curl -o /dev/null -w' and show which pod handled the request"""
     try:
-        r = requests.get(BACKEND_URL, timeout=10)
+        r = requests.get(URL, timeout=10)
         pod = r.headers.get("X-Pod-Name", "unknown")
-        print(f"status:{r.status_code},Time:{r.elapsed.total_seconds():.3f}s,Pod:{pod}")
-    except:
-        print(f"status:ERR,Time:N/A,Pod:N/A")
+        print(f"status:{r.status_code}, Time:{r.elapsed.total_seconds():.3f}s, Pod:{pod}")
+    except Exception as e:
+        print(f"status:ERR, Time:N/A, Pod:N/A")
 
 def main():
     total = int(input("Enter number of requests: "))
 
-    # Frontend requests
-    print(f"Sending {total} fire-and-forget requests to frontend...")
+    print(f"\nSending {total} fire-and-forget requests...")
     with ThreadPoolExecutor(max_workers=50) as executor:
-        list(executor.map(hit_frontend, range(total)))
+        list(executor.map(fire_and_forget, range(total)))
 
-    # Backend requests
-    print(f"\nSending {total} requests to backend (showing pod handling each request)...")
+    print(f"\nSending {total} requests with status/time and pod info...")
     with ThreadPoolExecutor(max_workers=50) as executor:
-        list(executor.map(hit_backend, range(total)))
+        list(executor.map(check_status_and_pod, range(total)))
 
 if __name__ == "__main__":
     main()
+
