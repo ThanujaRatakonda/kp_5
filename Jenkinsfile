@@ -1,140 +1,139 @@
 pipeline {
     agent any
-
     environment {
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         HARBOR_URL = "10.131.103.92:8090"
         HARBOR_PROJECT = "kp_4"
         TRIVY_OUTPUT_JSON = "trivy-output.json"
     }
-
     parameters {
-        choice(name: 'ACTION', choices: ['FULL_PIPELINE', 'SCALE_ONLY'])
-        string(name: 'REPLICA_COUNT', defaultValue: '1')
-        string(name: 'DB_REPLICA_COUNT', defaultValue: '1')
+        choice(
+            name: 'MICROSERVICE',
+            choices: ['FULL_PIPELINE', 'FRONTEND', 'BACKEND', 'SCALE_ONLY'],
+            description: 'Choose microservice to update or scale only'
+        )
+        string(name: 'FRONTEND_REPLICA', defaultValue: '1', description: 'Frontend replicas')
+        string(name: 'BACKEND_REPLICA', defaultValue: '1', description: 'Backend replicas')
+        string(name: 'DB_REPLICA', defaultValue: '1', description: 'Database replicas')
     }
-
     stages {
 
         stage('Checkout') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            when { expression { params.MICROSERVICE != 'SCALE_ONLY' } }
             steps {
                 git 'https://github.com/ThanujaRatakonda/kp_4.git'
             }
         }
 
-        stage('Detect Changes') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
-            steps {
-                script {
-                    echo "Detecting changes for frontend and backend..."
-
-                    env.CHANGED_FRONTEND = sh(
-                        script: "git diff --name-only HEAD~1 HEAD | grep '^frontend/' || true",
-                        returnStdout: true
-                    ).trim()
-
-                    env.CHANGED_BACKEND = sh(
-                        script: "git diff --name-only HEAD~1 HEAD | grep '^backend/' || true",
-                        returnStdout: true
-                    ).trim()
-
-                    if (!env.CHANGED_FRONTEND && !env.CHANGED_BACKEND) {
-                        error "No changes detected → Skipping pipeline."
-                    }
-
-                    echo "Frontend changed: ${env.CHANGED_FRONTEND != ''}"
-                    echo "Backend changed: ${env.CHANGED_BACKEND != ''}"
-                }
-            }
-        }
-
         stage('Build Docker Images') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            when { expression { params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND'] } }
             steps {
                 script {
-                    if (env.CHANGED_FRONTEND) {
-                        sh "docker build -t frontend:${IMAGE_TAG} ./frontend"
+                    def containers = []
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
+                        containers << [name: "frontend", folder: "frontend"]
                     }
-                    if (env.CHANGED_BACKEND) {
-                        sh "docker build -t backend:${IMAGE_TAG} ./backend"
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
+                        containers << [name: "backend", folder: "backend"]
+                    }
+
+                    containers.each { c ->
+                        echo "Building Docker image for ${c.name}..."
+                        sh "docker build -t ${c.name}:${IMAGE_TAG} ./${c.folder}"
                     }
                 }
             }
         }
 
         stage('Scan Docker Images') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            when { expression { params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND'] } }
             steps {
                 script {
-                    if (env.CHANGED_FRONTEND) {
-                        sh """
-                            trivy image frontend:${IMAGE_TAG} \
-                            --severity CRITICAL,HIGH \
-                            --format json \
-                            -o ${TRIVY_OUTPUT_JSON}
-                        """
+                    def containers = []
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
+                        containers << "frontend"
+                    }
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
+                        containers << "backend"
                     }
 
-                    if (env.CHANGED_BACKEND) {
+                    containers.each { img ->
+                        echo "Running Trivy scan for ${img}:${IMAGE_TAG}..."
                         sh """
-                            trivy image backend:${IMAGE_TAG} \
+                            trivy image ${img}:${IMAGE_TAG} \
                             --severity CRITICAL,HIGH \
                             --format json \
                             -o ${TRIVY_OUTPUT_JSON}
                         """
+                        archiveArtifacts artifacts: "${TRIVY_OUTPUT_JSON}", fingerprint: true
+                        def vulnerabilities = sh(script: """
+                            jq '[.Results[] |
+                                 (.Packages // [] | .[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH")) +
+                                 (.Vulnerabilities // [] | .[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH"))
+                                ] | length' ${TRIVY_OUTPUT_JSON}
+                        """, returnStdout: true).trim()
+                        if (vulnerabilities.toInteger() > 0) {
+                            error "CRITICAL/HIGH vulnerabilities found in ${img}!"
+                        }
                     }
                 }
             }
         }
 
         stage('Push Images to Harbor') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            when { expression { params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND'] } }
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'harbor-creds', usernameVariable: 'HARBOR_USER', passwordVariable: 'HARBOR_PASS')]) {
-                        sh "echo \$HARBOR_PASS | docker login ${HARBOR_URL} -u \$HARBOR_USER --password-stdin"
+                    def containers = []
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
+                        containers << "frontend"
+                    }
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
+                        containers << "backend"
                     }
 
-                    if (env.CHANGED_FRONTEND) {
-                        sh """
-                            docker tag frontend:${IMAGE_TAG} ${HARBOR_URL}/${HARBOR_PROJECT}/frontend:${IMAGE_TAG}
-                            docker push ${HARBOR_URL}/${HARBOR_PROJECT}/frontend:${IMAGE_TAG}
-                        """
-                    }
-
-                    if (env.CHANGED_BACKEND) {
-                        sh """
-                            docker tag backend:${IMAGE_TAG} ${HARBOR_URL}/${HARBOR_PROJECT}/backend:${IMAGE_TAG}
-                            docker push ${HARBOR_URL}/${HARBOR_PROJECT}/backend:${IMAGE_TAG}
-                        """
+                    containers.each { img ->
+                        def fullImage = "${HARBOR_URL}/${HARBOR_PROJECT}/${img}:${IMAGE_TAG}"
+                        withCredentials([usernamePassword(credentialsId: 'harbor-creds', usernameVariable: 'HARBOR_USER', passwordVariable: 'HARBOR_PASS')]) {
+                            sh "echo \$HARBOR_PASS | docker login ${HARBOR_URL} -u \$HARBOR_USER --password-stdin"
+                            sh "docker tag ${img}:${IMAGE_TAG} ${fullImage}"
+                            sh "docker push ${fullImage}"
+                        }
+                        sh "docker rmi ${img}:${IMAGE_TAG} || true"
                     }
                 }
             }
         }
 
         stage('Apply Kubernetes Deployment') {
-            when { expression { params.ACTION == 'FULL_PIPELINE' } }
+            when { expression { params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND'] } }
             steps {
                 script {
-
-                    if (env.CHANGED_FRONTEND) {
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
                         sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml"
-                        sh "kubectl apply -f k8s/frontend-deployment.yaml"
                     }
-
-                    if (env.CHANGED_BACKEND) {
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
                         sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml"
-                        sh "kubectl apply -f k8s/backend-deployment.yaml"
                     }
 
-                    // database always applied (image never changes)
-                    sh "kubectl apply -f k8s/database-deployment.yaml"
                     sh """
-                    kubectl get sc shared-storage-class || kubectl apply -f k8s/shared-storage-class.yaml
-                    kubectl get pv shared-pv || kubectl apply -f k8s/shared-pv.yaml
-                    kubectl get pvc shared-pvc || kubectl apply -f k8s/shared-pvc.yaml
+                        if [ '${MICROSERVICE}' = 'FULL_PIPELINE' ] || [ '${MICROSERVICE}' = 'FRONTEND' ]; then
+                            kubectl delete deployment frontend --ignore-not-found
+                            kubectl delete service frontend --ignore-not-found
+                        fi
+                        if [ '${MICROSERVICE}' = 'FULL_PIPELINE' ] || [ '${MICROSERVICE}' = 'BACKEND' ]; then
+                            kubectl delete deployment backend --ignore-not-found
+                            kubectl delete service backend --ignore-not-found
+                        fi
+                        if [ '${MICROSERVICE}' = 'FULL_PIPELINE' ]; then
+                            kubectl delete statefulset database --ignore-not-found
+                            kubectl delete service database --ignore-not-found
+                        fi
+                        kubectl get pvc shared-pvc || kubectl apply -f k8s/shared-pvc.yaml
                     """
+
+                    // Apply all YAMLs in k8s/
+                    sh "kubectl apply -f k8s/"
                 }
             }
         }
@@ -142,10 +141,12 @@ pipeline {
         stage('Scale Deployments') {
             steps {
                 script {
-                    sh "kubectl scale deployment frontend --replicas=${params.REPLICA_COUNT}"
-                    sh "kubectl scale deployment backend --replicas=${params.REPLICA_COUNT}"
-                    sh "kubectl scale statefulset database --replicas=${params.DB_REPLICA_COUNT}"
-                    sh "kubectl get deployments"
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND', 'SCALE_ONLY']) {
+                        sh "kubectl scale deployment frontend --replicas=${params.FRONTEND_REPLICA}"
+                        sh "kubectl scale deployment backend  --replicas=${params.BACKEND_REPLICA}"
+                        sh "kubectl scale statefulset database --replicas=${params.DB_REPLICA}"
+                        sh "kubectl get deployments"
+                    }
                 }
             }
         }
