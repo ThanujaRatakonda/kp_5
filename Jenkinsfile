@@ -17,7 +17,6 @@ pipeline {
         string(name: 'DB_REPLICA', defaultValue: '1', description: 'Database replicas')
     }
     stages {
-
         stage('Checkout') {
             when { expression { params.MICROSERVICE != 'SCALE_ONLY' } }
             steps {
@@ -30,13 +29,8 @@ pipeline {
             steps {
                 script {
                     def containers = []
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
-                        containers << [name: "frontend", folder: "frontend"]
-                    }
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
-                        containers << [name: "backend", folder: "backend"]
-                    }
-
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) containers << [name: "frontend", folder: "frontend"]
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) containers << [name: "backend", folder: "backend"]
                     containers.each { c ->
                         echo "Building Docker image for ${c.name}..."
                         sh "docker build -t ${c.name}:${IMAGE_TAG} ./${c.folder}"
@@ -50,12 +44,8 @@ pipeline {
             steps {
                 script {
                     def containers = []
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
-                        containers << "frontend"
-                    }
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
-                        containers << "backend"
-                    }
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) containers << "frontend"
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) containers << "backend"
 
                     containers.each { img ->
                         echo "Running Trivy scan for ${img}:${IMAGE_TAG}..."
@@ -72,9 +62,7 @@ pipeline {
                                  (.Vulnerabilities // [] | .[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH"))
                                 ] | length' ${TRIVY_OUTPUT_JSON}
                         """, returnStdout: true).trim()
-                        if (vulnerabilities.toInteger() > 0) {
-                            error "CRITICAL/HIGH vulnerabilities found in ${img}!"
-                        }
+                        if (vulnerabilities.toInteger() > 0) error "CRITICAL/HIGH vulnerabilities found in ${img}!"
                     }
                 }
             }
@@ -85,12 +73,8 @@ pipeline {
             steps {
                 script {
                     def containers = []
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
-                        containers << "frontend"
-                    }
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
-                        containers << "backend"
-                    }
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) containers << "frontend"
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) containers << "backend"
 
                     containers.each { img ->
                         def fullImage = "${HARBOR_URL}/${HARBOR_PROJECT}/${img}:${IMAGE_TAG}"
@@ -109,12 +93,8 @@ pipeline {
             when { expression { params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND'] } }
             steps {
                 script {
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) {
-                        sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml"
-                    }
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) {
-                        sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml"
-                    }
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND']) sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/frontend-deployment.yaml"
+                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'BACKEND']) sh "sed -i 's/__IMAGE_TAG__/${IMAGE_TAG}/g' k8s/backend-deployment.yaml"
 
                     sh """
                         if [ '${MICROSERVICE}' = 'FULL_PIPELINE' ] || [ '${MICROSERVICE}' = 'FRONTEND' ]; then
@@ -130,10 +110,8 @@ pipeline {
                             kubectl delete service database --ignore-not-found
                         fi
                         kubectl get pvc shared-pvc || kubectl apply -f k8s/shared-pvc.yaml
+                        kubectl apply -f k8s/
                     """
-
-                    // Apply all YAMLs in k8s/
-                    sh "kubectl apply -f k8s/"
                 }
             }
         }
@@ -141,12 +119,10 @@ pipeline {
         stage('Scale Deployments') {
             steps {
                 script {
-                    if (params.MICROSERVICE in ['FULL_PIPELINE', 'FRONTEND', 'BACKEND', 'SCALE_ONLY']) {
-                        sh "kubectl scale deployment frontend --replicas=${params.FRONTEND_REPLICA}"
-                        sh "kubectl scale deployment backend  --replicas=${params.BACKEND_REPLICA}"
-                        sh "kubectl scale statefulset database --replicas=${params.DB_REPLICA}"
-                        sh "kubectl get deployments"
-                    }
+                    sh "kubectl scale deployment frontend --replicas=${params.FRONTEND_REPLICA}"
+                    sh "kubectl scale deployment backend  --replicas=${params.BACKEND_REPLICA}"
+                    sh "kubectl scale statefulset database --replicas=${params.DB_REPLICA}"
+                    sh "kubectl get deployments"
                 }
             }
         }
