@@ -172,9 +172,11 @@ pipeline {
                     kill -9 \$pid
                 fi
             done
-            setsid kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 >/dev/null 2>&1 < /dev/null &
-            setsid kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 >/dev/null 2>&1 < /dev/null &
-            setsid kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 >/dev/null 2>&1 < /dev/null &
+             echo "Starting port-forwarding in background..."
+            nohup bash -c 'kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 >/dev/null 2>&1 & \
+                            kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 >/dev/null 2>&1 & \
+                            kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 >/dev/null 2>&1 &' >/dev/null 2>&1 &
+            
         """
     }
 }
