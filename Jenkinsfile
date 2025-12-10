@@ -159,14 +159,14 @@ pipeline {
                 }
             }
         }
-      //use port forward
-                   // Port Forwarding
-        stage('Port Forwarding') {
-            when { expression { params.ACTION in ['FULL_PIPELINE', 'FRONTEND_ONLY', 'BACKEND_ONLY'] } }
-            steps {
-                echo "Starting port forwarding..."
-                sh 'bash start-port-forward.sh'
-            }
-        }
+      //use port forward 
+            stage('Port Forwarding') {
+    when { expression { params.ACTION in ['FULL_PIPELINE', 'FRONTEND_ONLY', 'BACKEND_ONLY'] } }
+    steps {
+        echo "Starting port forwarding..."
+        sh 'bash start-port-forward.sh'
+    }
+}
+
     }
 }
