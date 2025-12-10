@@ -159,6 +159,14 @@ pipeline {
                 }
             }
         }
+        stage('Deploy HPA') {
+            when { expression { params.ACTION in ['FULL_PIPELINE', 'SCALE_ONLY', 'FRONTEND_ONLY', 'BACKEND_ONLY'] } }
+            steps {
+                echo "Applying Horizontal Pod Autoscalers..."
+                sh "kubectl apply -f k8s/frontend-hpa.yaml || true"
+                sh "kubectl apply -f k8s/backend-hpa.yaml || true"
+            }
+        }
 
     }
 }
