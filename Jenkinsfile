@@ -164,7 +164,7 @@ pipeline {
     when { expression { params.ACTION in ['FULL_PIPELINE', 'FRONTEND_ONLY', 'BACKEND_ONLY'] } }
     steps {
         echo "Starting port forwarding..."
-        sh 'bash start-port-forward.sh'
+        sh 'sudo -u jenkins bash start-port-forward.sh'
     }
 }
 
