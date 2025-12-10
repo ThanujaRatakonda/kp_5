@@ -159,6 +159,28 @@ pipeline {
                 }
             }
         }
-
+         stage('Port Forward Services') {
+    when {
+        expression { params.ACTION in ['FULL_PIPELINE', 'FRONTEND_ONLY', 'BACKEND_ONLY'] }
+    }
+    steps {
+        sh """
+            if lsof -t -i:5000 >/dev/null; then
+                kill -9 \$(lsof -t -i:5000)
+            fi
+            if lsof -t -i:4000 >/dev/null; then
+                kill -9 \$(lsof -t -i:4000)
+            fi
+            if lsof -t -i:5433 >/dev/null; then
+                kill -9 \$(lsof -t -i:5433)
+            fi
+        """
+        sh """
+            kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 >/dev/null 2>&1 & disown
+            kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 >/dev/null 2>&1 & disown
+            kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 >/dev/null 2>&1 & disown
+        """
+    }
+}
     }
 }
