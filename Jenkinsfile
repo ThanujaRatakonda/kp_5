@@ -173,9 +173,9 @@ pipeline {
                 fi
             done
             # Run in bash shell to ensure proper backgrounding
-            bash -c "nohup kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 >/dev/null 2>&1 &"
-            bash -c "nohup kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 >/dev/null 2>&1 &"
-            bash -c "nohup kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 >/dev/null 2>&1 &"
+           screen -dmS frontend_pf kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0
+           screen -dmS backend_pf kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0
+           screen -dmS db_pf kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0
         """
               }
          }
