@@ -2,7 +2,6 @@
 
 echo "Stopping old port-forward processes..."
 
-# Kill old port-forward processes
 for port in 5000 4000 5433; do
     pid=$(lsof -t -i:$port || true)
     if [ ! -z "$pid" ]; then
@@ -11,12 +10,13 @@ for port in 5000 4000 5433; do
     fi
 done
 
-echo "Starting port-forwarding in background..."
+echo "Starting port-forwarding in fully detached background..."
 
-nohup kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 > backend.log 2>&1 &
+export KUBECONFIG=/var/lib/jenkins/.kube/config
 
-nohup kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 > frontend.log 2>&1 &
+# Detached port-forwards using setsid and logs in /tmp
+setsid /usr/local/bin/kubectl port-forward svc/backend 5000:5000 --address 0.0.0.0 > /tmp/backend.log 2>&1 &
+setsid /usr/local/bin/kubectl port-forward svc/frontend 4000:3000 --address 0.0.0.0 > /tmp/frontend.log 2>&1 &
+setsid /usr/local/bin/kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 > /tmp/database.log 2>&1 &
 
-nohup kubectl port-forward statefulset/database 5433:5432 --address 0.0.0.0 > database.log 2>&1 &
-
-echo "Port forwarding started."
+echo "Port forwarding started. Logs: /tmp/backend.log /tmp/frontend.log /tmp/database.log"
