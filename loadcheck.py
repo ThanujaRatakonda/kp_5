@@ -2,7 +2,7 @@ import requests  # send http get requests
 import concurrent.futures  # send request parallel for load testing
 import time   #measure execu. time
 # url from minikube service ingress-nginx-controller -n ingress-nginx --url-> url for load testing
-URL = "http://192.168.49.2:30987/users"   
+URL = "http://192.168.49.2:30987/burn"   
 def hit(i):  #send one GET request
     try:
         r = requests.get(URL, timeout=5) 
