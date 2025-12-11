@@ -8,7 +8,7 @@ spec:
     kind: Deployment
     name: backend
   minReplicas: 1
-  maxReplicas: 5
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
@@ -22,7 +22,7 @@ spec:
       policies:
       - type: Percent
         value: 100
-        periodSeconds: 30
+        periodSeconds: 10
       - type: Pods
         value: 2
         periodSeconds: 15
