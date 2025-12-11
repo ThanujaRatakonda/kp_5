@@ -5,7 +5,7 @@ import time   #measure execu. time
 URL = "http://192.168.49.2:30987/burn"   
 def hit(i):  #send one GET request
     try:
-        r = requests.get(URL, timeout=5) 
+        r = requests.get(URL, timeout=60) 
         pod = r.headers.get("X-Pod-Name", "unknown-pod")  # reades X-pod name added by FastApi middleware
         elapsed = r.elapsed.total_seconds()   # calculate how long responce took
         return i, pod, elapsed    
