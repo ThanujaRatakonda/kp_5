@@ -81,7 +81,7 @@ def hello():
 @app.get("/burn")
 def burn():
     x = 0
-    for i in range(50_000_000):  
+    for i in range(5_000_000):  
         x += i * i
     return {"done": True, "result": x}
 
