@@ -25,7 +25,7 @@ spec:
         periodSeconds: 30
       - type: Pods
         value: 2
-        periodSeconds: 30
+        periodSeconds: 15
       selectPolicy: Max
 
     scaleDown:
@@ -33,6 +33,6 @@ spec:
       policies:
       - type: Percent
         value: 50
-        periodSeconds: 30
+        periodSeconds: 15
       selectPolicy: Max
 
