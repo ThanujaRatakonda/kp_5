@@ -64,6 +64,11 @@ def add_user(user: dict):
     conn.close()
     return {"message": "User added!"}
 
+@app.get("/")
+def root():
+    return {"message": "Backend is healthy!"}
+
+
 @app.get("/users")
 def get_users():
     conn = db_conn()
