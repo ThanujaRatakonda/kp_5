@@ -77,3 +77,11 @@ def get_users():
 @app.get("/hello")
 def hello():
     return {"message": "Hello from Backend with retry logic!"}
+
+@app.get("/burn")
+def burn():
+    x = 0
+    for i in range(50_000_000):  
+        x += i * i
+    return {"done": True, "result": x}
+
